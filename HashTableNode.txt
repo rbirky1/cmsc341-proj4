@@ -1,0 +1,618 @@
+import java.util.LinkedList;
+import java.util.Map;
+
+// ------------------------------------------------------------------------------
+/**
+ * HashTable is an implementation of a a data structure that uses a hash
+ * function to map identifying values, known as keys, to their associated
+ * values.
+ * 
+ * @author Michael D. Naper, Jr. <MichaelNaper.com>
+ * @version 2010.07.09
+ * 
+ * @param <K>
+ *            The generic type for keys that map identifying values in the hash
+ *            table.
+ * @param <V>
+ *            The generic type for values mapped in the hash table.
+ */
+public class HashTable<K, V> {
+
+    // ~ Nested Classes ........................................................
+
+    // -------------------------------------------------------------------------
+    /**
+     * Entry is an implementation of a hash table entry, which stores a key and
+     * the value it maps to in the table.
+     */
+    private class Entry {
+
+        // ~ Instance Variables ................................................
+
+        /**
+         * The key that maps the value in the hash table.
+         */
+        private K key;
+
+        /**
+         * The value contained in the hash table.
+         */
+        private V value;
+
+        // ~ Constructors ......................................................
+
+        // ---------------------------------------------------------------------
+        /**
+         * Constructs a new instance of Entry with the specified key and value
+         * pair.
+         * 
+         * @param key
+         *            The key that maps the value in the hash table.
+         * @param value
+         *            The value contained in the hash table.
+         */
+        public Entry(K key, V value) {
+
+            this.key = key;
+            this.value = value;
+        }
+
+        // ~ Methods ...........................................................
+
+        // ---------------------------------------------------------------------
+        /**
+         * Returns a string representation of the Buffer.
+         * 
+         * @return A string representation of the Buffer.
+         */
+        @Override
+        public String toString() {
+
+            return (key + ":  " + value);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    /**
+     * SlotState is an enumeration type used to identity the access state of a
+     * table slot.
+     */
+    private enum SlotState {
+
+        FULL, TOMBSTONE;
+    }
+
+    // ~ Instance Variables ....................................................
+
+    /**
+     * The container which stores the key/value pair entries.
+     */
+    private Entry[] table;
+
+    /**
+     * The container which stores the corresponding slot states.
+     */
+    private SlotState[] slotStates;
+
+    /**
+     * The number of keys that map to values stored in the table.
+     */
+    private int size;
+
+    /**
+     * The initial capacity of the table.
+     */
+    private int initialCapacity;
+
+    /**
+     * The load factor of the table where the capacity is doubled and any of the
+     * keys currently in the table are rehashed.
+     */
+    private float loadFactor;
+
+    // ~ Constructors ..........................................................
+
+    // -------------------------------------------------------------------------
+    /**
+     * Constructs a new, empty instance of HashTable with the specified initial
+     * capacity and load factor.
+     * 
+     * @param initialCapacity
+     *            The initial capacity of the table.
+     * @param loadFactor
+     *            The load factor of the table where the capacity is doubled and
+     *            any of the keys currently in the table are rehashed.
+     */
+    @SuppressWarnings("unchecked")
+    public HashTable(int initialCapacity, float loadFactor) {
+
+        if (initialCapacity < 1) {
+            throw new IllegalArgumentException(
+                    "Initial capacity must be a positive integer.");
+        }
+
+        if (loadFactor <= 0 || loadFactor > 1) {
+            throw new IllegalArgumentException(
+                    "Load factor must be a number in the range (0, 1].");
+        }
+
+        this.initialCapacity = initialCapacity;
+        this.loadFactor = loadFactor;
+
+        table = new HashTable.Entry[initialCapacity];
+        slotStates = new SlotState[initialCapacity];
+
+        size = 0;
+    }
+
+    // -------------------------------------------------------------------------
+    /**
+     * Constructs a new, empty instance of HashTable with the specified initial
+     * table size and default load factor, which is 0.75.
+     * 
+     * @param initialCapacity
+     *            The initial number of slots in the table.
+     */
+    public HashTable(int initialCapacity) {
+
+        this(initialCapacity, 0.75f);
+    }
+
+    // -------------------------------------------------------------------------
+    /**
+     * Constructs a new, empty instance of HashTable with the default initial
+     * table size, which is 19, and default load factor, which is 0.75.
+     */
+    public HashTable() {
+
+        this(19, 0.75f);
+    }
+
+    // ~ Methods ...............................................................
+
+    // -------------------------------------------------------------------------
+    /**
+     * Maps the specified key to the specified value in this HashTable.
+     * 
+     * @param key
+     *            The key that maps the value in the hash table.
+     * @param value
+     *            The value to be mapped to in the hash table.
+     * @return The previous value of the specified key in the hash table, or
+     *         null if it did not have one.
+     */
+    public V put(K key, V value) {
+
+        if (key == null) {
+            throw new NullPointerException("Key is null.");
+        }
+
+        if (value == null) {
+            throw new NullPointerException("Value is null.");
+        }
+
+        return put(new Entry(key, value));
+    }
+
+    // -------------------------------------------------------------------------
+    /**
+     * Puts the specified Entry in this HashTable.
+     * 
+     * @param entry
+     *            The entry to put into the hash table.
+     * @return The previous value of the key of the specified entry in the hash
+     *         table, or null if it did not have one.
+     */
+    private V put(Entry entry) {
+
+        if (entry == null) {
+            return null;
+        }
+
+        int homeIndex = entry.key.hashCode() % table.length;
+
+        int nextIndex;
+
+        int insertIndex = -1;
+
+        // Try quadratic probing for up to half the capacity of the table:
+        for (int k = 0; k < table.length / 2; k++) {
+            nextIndex = (homeIndex + (k * k)) % table.length;
+
+            if (slotStates[nextIndex] == SlotState.FULL) {
+                if (entry.key.equals(table[nextIndex].key)) {
+                    V oldValue = table[nextIndex].value;
+
+                    if (insertIndex == -1) {
+                        table[nextIndex].value = entry.value;
+                    } else {
+                        table[insertIndex] = entry;
+                        slotStates[insertIndex] = SlotState.FULL;
+
+                        table[nextIndex] = null;
+                        slotStates[nextIndex] = SlotState.TOMBSTONE;
+                    }
+
+                    return oldValue;
+                }
+            } else if (slotStates[nextIndex] == SlotState.TOMBSTONE) {
+                if (insertIndex == -1) {
+                    insertIndex = nextIndex;
+                }
+            } else {
+                if (insertIndex == -1) {
+                    insertIndex = nextIndex;
+                }
+
+                table[insertIndex] = entry;
+                slotStates[insertIndex] = SlotState.FULL;
+
+                size++;
+
+                if (size > loadFactor * table.length) {
+                    rehash();
+                }
+
+                return null;
+            }
+        }
+
+        // If quadratic probing fails, perform linear probing:
+        for (int k = 0; k < table.length; k++) {
+            nextIndex = (homeIndex + k) % table.length;
+
+            if (slotStates[nextIndex] == SlotState.FULL) {
+                if (entry.key.equals(table[nextIndex].key)) {
+                    V oldValue = table[nextIndex].value;
+
+                    if (insertIndex == -1) {
+                        table[nextIndex].value = entry.value;
+                    } else {
+                        table[insertIndex] = entry;
+                        slotStates[insertIndex] = SlotState.FULL;
+
+                        table[nextIndex] = null;
+                        slotStates[nextIndex] = SlotState.TOMBSTONE;
+                    }
+
+                    return oldValue;
+                }
+            } else if (slotStates[nextIndex] == SlotState.TOMBSTONE) {
+                if (insertIndex == -1) {
+                    insertIndex = nextIndex;
+                }
+            } else {
+                if (insertIndex == -1) {
+                    insertIndex = nextIndex;
+                }
+
+                table[insertIndex] = entry;
+                slotStates[insertIndex] = SlotState.FULL;
+
+                size++;
+
+                if (size > loadFactor * table.length) {
+                    rehash();
+                }
+
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    // -------------------------------------------------------------------------
+    /**
+     * Doubles the capacity of and internally reorganizes this HashTable, in
+     * order to accommodate and access its entries more efficiently. This method
+     * is called automatically when the number of keys in the hash table exceeds
+     * this HashTable's load factor.
+     */
+    @SuppressWarnings("unchecked")
+    private void rehash() {
+
+        Entry[] oldTable = table;
+
+        table = new HashTable.Entry[2 * table.length];
+        slotStates = new SlotState[2 * table.length];
+
+        size = 0;
+
+        for (Entry element : oldTable) {
+            if (element != null) {
+                put(element);
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    /**
+     * Copies all the mappings from the specified Map to this HashTable. These
+     * mappings will replace any mappings that this HashTable had for any of the
+     * keys currently in the specified Map.
+     * 
+     * @param map
+     *            The mappings to be stored in this HashMap.
+     */
+    public void putAll(Map<? extends K, ? extends V> map) {
+
+        if (map == null) {
+            throw new NullPointerException("Map is null.");
+        }
+
+        for (Map.Entry<? extends K, ? extends V> entry : map.entrySet()) {
+            put(entry.getKey(), entry.getValue());
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    /**
+     * Returns true if some key maps into the specified value in this HashTable.
+     * 
+     * @param value
+     *            The value whose presence is to be tested.
+     * @return True if some key maps into the specified value in this HashTable.
+     */
+    public boolean contains(V value) {
+
+        if (value == null) {
+            return false;
+        }
+
+        for (Entry entry : table) {
+            if (entry != null) {
+                if (value.equals(entry.value)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // -------------------------------------------------------------------------
+    /**
+     * Returns true if the specified object is a key in this HashTable.
+     * 
+     * @param key
+     *            The key whose presence is to be tested.
+     * @return True if the specified object is a key in this HashTable.
+     */
+    public boolean containsKey(K key) {
+
+        if (key == null) {
+            return false;
+        }
+
+        return get(key) != null;
+    }
+
+    // -------------------------------------------------------------------------
+    /**
+     * Returns true if some key maps into the specified value in this HashTable.
+     * Note that this method is identical in functionality to contains().
+     * 
+     * @param value
+     *            The value whose presence is to be tested.
+     * @return True if some key maps into the specified value in this HashTable.
+     */
+    public boolean containsValue(V value) {
+
+        return contains(value);
+    }
+
+    // -------------------------------------------------------------------------
+    /**
+     * Removes the specified key (and its corresponding value) from this
+     * HashTable, if the key is present.
+     * 
+     * @param key
+     *            The key to be removed.
+     * @return The value to which the key had been mapped in this HashTable, or
+     *         null if the key did not have a mapping.
+     */
+    public V remove(K key) {
+
+        if (key == null) {
+            throw new NullPointerException("Key is null.");
+        }
+
+        int homeIndex = key.hashCode() % table.length;
+
+        int nextIndex;
+
+        // Try quadratic probing for up to half the capacity of the table:
+        for (int k = 0; k < table.length / 2; k++) {
+            nextIndex = (homeIndex + (k * k)) % table.length;
+
+            if (slotStates[nextIndex] == SlotState.FULL) {
+                if (key.equals(table[nextIndex].key)) {
+                    V oldValue = table[nextIndex].value;
+
+                    table[nextIndex] = null;
+                    slotStates[nextIndex] = SlotState.TOMBSTONE;
+
+                    size--;
+
+                    return oldValue;
+                }
+            } else if (slotStates[nextIndex] != SlotState.TOMBSTONE) {
+                return null;
+            } else {
+                ;
+            }
+        }
+
+        // If quadratic probing fails, perform linear probing:
+        for (int k = 0; k < table.length; k++) {
+            nextIndex = (homeIndex + k) % table.length;
+
+            if (slotStates[nextIndex] == SlotState.FULL) {
+                if (key.equals(table[nextIndex].key)) {
+                    V oldValue = table[nextIndex].value;
+
+                    table[nextIndex] = null;
+                    slotStates[nextIndex] = SlotState.TOMBSTONE;
+
+                    size--;
+
+                    return oldValue;
+                }
+            } else if (slotStates[nextIndex] != SlotState.TOMBSTONE) {
+                return null;
+            } else {
+                ;
+            }
+        }
+
+        return null;
+    }
+
+    // -------------------------------------------------------------------------
+    /**
+     * Returns the value to which the specified key is mapped in this HashTable.
+     * 
+     * @param key
+     *            The key to map to a value in the HashTable.
+     * @return The value to which the key is mapped in this HashTable, or null
+     *         if the key is not mapped to any value in this HashTable.
+     */
+    public V get(K key) {
+
+        if (key == null) {
+            throw new NullPointerException("Key is null.");
+        }
+
+        int homeIndex = key.hashCode() % table.length;
+
+        int nextIndex;
+
+        // Try quadratic probing for up to half the capacity of the table:
+        for (int k = 0; k < table.length / 2; k++) {
+            nextIndex = (homeIndex + (k * k)) % table.length;
+
+            if (slotStates[nextIndex] == SlotState.FULL) {
+                if (key.equals(table[nextIndex].key)) {
+                    return table[nextIndex].value;
+                }
+            } else if (slotStates[nextIndex] != SlotState.TOMBSTONE) {
+                return null;
+            } else {
+                ;
+            }
+        }
+
+        // If quadratic probing fails, perform linear probing:
+        for (int k = 0; k < table.length; k++) {
+            nextIndex = (homeIndex + k) % table.length;
+
+            if (slotStates[nextIndex] == SlotState.FULL) {
+                if (key.equals(table[nextIndex].key)) {
+                    return table[nextIndex].value;
+                }
+            } else if (slotStates[nextIndex] != SlotState.TOMBSTONE) {
+                return null;
+            } else {
+                ;
+            }
+        }
+
+        return null;
+    }
+
+    // -------------------------------------------------------------------------
+    /**
+     * Returns a LinkedList of the keys that map values in this HashTable.
+     * 
+     * @return A LinkedList of the keys that map values in this HashTable.
+     */
+    public LinkedList<K> keys() {
+
+        LinkedList<K> result = new LinkedList<K>();
+
+        for (Entry element : table) {
+            if (element != null) {
+                result.add(element.key);
+            }
+        }
+
+        return result;
+    }
+
+    // -------------------------------------------------------------------------
+    /**
+     * Returns a LinkedList of the values mapped in this HashTable.
+     * 
+     * @return A LinkedList of the values mapped in this HashTable.
+     */
+    public LinkedList<V> values() {
+
+        LinkedList<V> result = new LinkedList<V>();
+
+        for (Entry element : table) {
+            if (element != null) {
+                result.add(element.value);
+            }
+        }
+
+        return result;
+    }
+
+    // -------------------------------------------------------------------------
+    /**
+     * Clears this HashTable so that it contains no keys.
+     */
+    @SuppressWarnings("unchecked")
+    public void clear() {
+
+        table = new HashTable.Entry[initialCapacity];
+        slotStates = new SlotState[initialCapacity];
+
+        size = 0;
+    }
+
+    // -------------------------------------------------------------------------
+    /**
+     * Returns true if this HashTable maps no keys to values. In other words,
+     * returns true if the size of this HashTable is zero.
+     * 
+     * @return True if this BinarySearchTree maps no keys to values.
+     */
+    public boolean isEmpty() {
+
+        return size == 0;
+    }
+
+    // -------------------------------------------------------------------------
+    /**
+     * Returns the number of keys in this HashTable.
+     * 
+     * @return The number of keys in this HashTable.
+     */
+    public int size() {
+
+        return size;
+    }
+
+    // -------------------------------------------------------------------------
+    /**
+     * Returns a string representation of this HashTable. The returned string is
+     * a vertical list of the entries contained in the table.
+     * 
+     * @return A string representation of this HashTable.
+     */
+    @Override
+    public String toString() {
+
+        StringBuilder result = new StringBuilder();
+
+        for (Entry entry : table) {
+            if (entry != null) {
+                result.append(entry + "\n");
+            }
+        }
+
+        return result.toString();
+    }
+}
